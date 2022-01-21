@@ -1,3 +1,4 @@
+from cgitb import text
 import time
 # from tkinter import W
 from selenium import webdriver
@@ -45,6 +46,19 @@ for post in posts:
     # d = post.find_element_by_class_name("post-date").get_attribute('title')
     table.append((p, ))
 pprint(table)
-
 driver.save_screenshot('screen3.png')
+
+for post in table[0:2] + table[-1: -3]:
+    parse_post(post[0], driver)
+
 driver.quit()
+
+def parse_post(url, driver){
+    driver.get(url)
+    post = driver.find_element_by_class_name("single-post")
+    title = post.find_element_by_class_name("post-title").text
+    subtitle = post.find_element_by_class_name("subtitle").text
+    datetime = post.find_element_by_class_name("post-date").get_attribute('title')
+    like_count = post.find_element_by_class_name("like-count").text
+    body = post.find_element_by_class_name("available-content")
+}

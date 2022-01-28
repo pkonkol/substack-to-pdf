@@ -3,10 +3,13 @@ import time
 import re
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from pprint import pprint
 from ebooklib import epub
 
+POST_RETRY_LIMIT = 5
 
 options = webdriver.ChromeOptions();
 options.add_argument('--headless');
@@ -31,16 +34,15 @@ def parse_archive(url, limit=-1):
     last_height = driver.execute_script("return document.body.scrollHeight")
     while True:
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(1)
+        WebDriverWait(driver, 30).until(
+            EC.invisibility_of_element_located((By.CLASS_NAME, "post-preview-silhouette"))
+        )
         recent_height = driver.execute_script("return document.body.scrollHeight")
         print(f"scrolling screen down. last:{last_height}, " 
             f"now:{recent_height}")
         if recent_height  == last_height:
             break
-        time.sleep(0.5)
         last_height = recent_height
-
-    time.sleep(16)
 
     posts = driver.find_elements(By.CLASS_NAME, "post-preview")
     urls = []
@@ -52,23 +54,17 @@ def parse_archive(url, limit=-1):
 
 def parse_post(url):
     print(f'parsing {url}')
-    time.sleep(20)
     driver.get(url)
-    driver.implicitly_wait(2)
+    post = WebDriverWait(driver, 30).until(
+        EC.presence_of_element_located((By.CLASS_NAME, "single-post")) # d.find_element(By.CLASS_NAME, "single-post")
+    )
+
     try:
         driver.find_element(By.XPATH, '//div[@class="single-post"]//div[contains(@class,"paywall")]')
         paywalled = True
     except NoSuchElementException:
         paywalled = False
 
-    try:
-        driver.implicitly_wait(120)
-        post = driver.find_element(By.CLASS_NAME, "single-post")
-        driver.implicitly_wait(2)
-    except NoSuchElementException:
-        driver.implicitly_wait(2)
-        print('Not a post ')
-        return None
     title = post.find_element(By.CLASS_NAME, "post-title").text
     try:
         subtitle = post.find_element(By.CLASS_NAME, "subtitle").text
@@ -86,7 +82,6 @@ def parse_post(url):
     ]
     text_html = '\n'.join(text_list)
     # pprint((post, title, subtitle, datetime, like_count, body))
-    driver.implicitly_wait(0)
     print(f'title: {title}, paywalled: {paywalled}, likes: {like_count}')
     return {'title': title, 'subtitle': subtitle, 'date': datetime,
             'like_count': like_count, 'text_html': text_html,
@@ -106,16 +101,29 @@ if __name__ == "__main__":
     toc = []
     spine = []
     not_posts = []
+    paywalled_posts = []
     for i, url in enumerate(archive['urls'][::-1]):
-        p = parse_post(url)
+        j = 0
+        while True:
+            try:
+                p = parse_post(url)
+                break
+            except TimeoutException:
+                j += 1
+                if j >= POST_RETRY_LIMIT:
+                    break
+                print(f'retrying parsing {url} for {j} time')
+
+        if p['paywalled']:
+            paywalled_posts.append(url)
+            # continue
         if not p:
             not_posts.append(url)
             continue
-        title = p['title']
-        title = f'paywalled: {p["title"]}' if p['paywalled'] else p['title']
 
-        chapter = epub.EpubHtml(title=title,
-            file_name = str(i) + get_filename(p['title']) + '.xhtml',
+        chapter = epub.EpubHtml(
+            title=p['title'],
+            file_name = str(i) + '.' + get_filename(p['title']) + '.xhtml',
             lang='en'
         )
         chapter.content = (
@@ -132,6 +140,7 @@ if __name__ == "__main__":
         spine.append(chapter)
         toc.append(epub.Link(str(i) + get_filename(p['title']) + '.xhtml', p['title'], ""))
     pprint(f'not posts: {not_posts}')
+    pprint(f'paywalled posts: {paywalled_posts}')
 
     book.toc = toc
     book.add_item(epub.EpubNcx())

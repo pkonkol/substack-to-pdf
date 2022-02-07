@@ -138,7 +138,7 @@ if __name__ == "__main__":
                     break
                 print(f'retrying parsing {post["url"]} for {j} time')
         if not p:
-            not_posts.append(url)
+            not_posts.append(post["url"])
             continue
 
         chapter = epub.EpubHtml(

@@ -16,6 +16,5 @@ For conversion to .mobi use `calibre`.
 
 
 ## TODO
- * Filters
  * Download assets like images
- * Find paywall by parsing the archive
+ * Cleanup code

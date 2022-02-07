@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 import re
@@ -10,10 +11,14 @@ from pprint import pprint
 from ebooklib import epub
 
 POST_RETRY_LIMIT = 5
+FILTER = None #FILTER = "^\s*#" # Must be a vaiil regexp
+ALLOW_PAYWALLED = True
+PAYWALLED_ONLY = False
+EMAIL = os.environ.get("SUBSTACK_EMAIL")
+PASSWORD = os.environ.get("SUBSTACK_PASS")
 
 options = webdriver.ChromeOptions();
 options.add_argument('--headless');
-options.add_argument('window-size=1920x1080');
 options.add_argument('log-level=1')
 driver = webdriver.Chrome(options=options)
 
@@ -21,13 +26,13 @@ def get_filename(s):
     s = str(s).strip().replace(' ', '_')
     return re.sub(r'(?u)[^-\w.]', '', s)
 
-def parse_archive(url, limit=-1):
+def parse_archive(url, limit=-1, filter=None):
     driver.get(url + '/archive?sort=new')
     blog_name = driver.find_element(By.XPATH, '//*[@class="topbar"]//*[@class="headline"]//span[@class="name"]').text
     last_height = driver.execute_script("return document.body.scrollHeight")
     while True:
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(1.3)
+        time.sleep(0.5)
         WebDriverWait(driver, 30).until(
             EC.invisibility_of_element_located((By.CLASS_NAME, "post-preview-silhouette"))
         )
@@ -39,17 +44,20 @@ def parse_archive(url, limit=-1):
         last_height = recent_height
 
     posts = driver.find_elements(By.CLASS_NAME, "post-preview")
-    urls = []
+    posts_parsed = []
     for post in posts[0:limit]:
         url = post.find_element(By.CLASS_NAME, "post-preview-title").get_attribute('href')
+        title = post.find_element(By.CLASS_NAME, "post-preview-title").text
+        if filter and not re.match(filter, title):
+            continue
         try:
             post.find_element(By.CLASS_NAME, "audience-lock")
             paywalled = True
         except NoSuchElementException:
             paywalled = False
-        urls.append({'url': url, 'paywalled': paywalled})
-    pprint(urls)
-    return {'blog_name': blog_name, 'posts': urls}
+        posts_parsed.append({'url': url, 'paywalled': paywalled, 'title': title})
+    pprint(posts_parsed)
+    return {'blog_name': blog_name, 'posts': posts_parsed}
 
 def parse_post(url):
     print(f'parsing {url}')
@@ -87,8 +95,23 @@ def parse_post(url):
             'paywalled': paywalled
            }
 
+def sign_in(email, password=None, login_link=None):
+    print(f"signing for email: {email}")
+    driver.get("https://substack.com/sign-in")
+    driver.find_element(By.CLASS_NAME, "substack-login__login-option").click()
+    driver.find_element(By.XPATH, '//input[@name="email"]').send_keys(email)
+    driver.find_element(By.XPATH, '//input[@name="password"]').send_keys(password)
+    driver.find_element(By.CLASS_NAME, "substack-login__go-button").click()
+    WebDriverWait(driver, 30).until(
+        EC.presence_of_element_located((By.CLASS_NAME, 'homepage-nav-user-indicator')) 
+    )
+    print("signed in")
+
+
 if __name__ == "__main__":
-    archive = parse_archive(sys.argv[1], limit=-1)
+    if EMAIL and PASSWORD:
+        sign_in(EMAIL, PASSWORD)
+    archive = parse_archive(sys.argv[1], limit=-1, filter=FILTER)
 
     book = epub.EpubBook()
     book.set_identifier('id00000')
@@ -106,7 +129,7 @@ if __name__ == "__main__":
         j = 0
         while True:
             try:
-                if post['paywalled'] == False:
+                if ALLOW_PAYWALLED or post['paywalled'] == PAYWALLED_ONLY:
                     p = parse_post(post['url'])
                 break
             except TimeoutException:

@@ -22,18 +22,12 @@ def get_filename(s):
     return re.sub(r'(?u)[^-\w.]', '', s)
 
 def parse_archive(url, limit=-1):
-    driver.get(url)
-    driver.find_element(By.XPATH, '//button[text()="Let me read it first"]').click()
-    time.sleep(1)
+    driver.get(url + '/archive?sort=new')
     blog_name = driver.find_element(By.XPATH, '//*[@class="topbar"]//*[@class="headline"]//span[@class="name"]').text
-    posts = driver.find_elements(By.CLASS_NAME, "post-preview")
-    table = []
-    driver.get(
-        driver.find_element(By.CLASS_NAME, "portable-archive-all").get_attribute('href')
-    )
     last_height = driver.execute_script("return document.body.scrollHeight")
     while True:
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(1.3)
         WebDriverWait(driver, 30).until(
             EC.invisibility_of_element_located((By.CLASS_NAME, "post-preview-silhouette"))
         )
@@ -43,7 +37,6 @@ def parse_archive(url, limit=-1):
         if recent_height  == last_height:
             break
         last_height = recent_height
-        time.sleep(0.1)
 
     posts = driver.find_elements(By.CLASS_NAME, "post-preview")
     urls = []

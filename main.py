@@ -93,7 +93,11 @@ def parse_post(url):
         subtitle = ""
 
     datetime = out.strftime("%Y-%m-%d %H:%M:%S")
-    like_count = post.find_element(By.XPATH, '//div[contains(concat(" ",normalize-space(@class)," "),"like-button-container")]//div[@class="label"]').text
+    try:
+        like_count = post.find_element(By.XPATH, '//div[contains(concat(" ",normalize-space(@class)," "),"like-button-container")]//div[@class="label"]').text
+    except NoSuchElementException:
+        print('Failed to find like count')
+        like_count = 0
     body = post.find_element(By.CLASS_NAME, "available-content").find_element(By.CLASS_NAME, "body")
     
     body = post.find_element(By.CLASS_NAME, "available-content").find_element(By.CLASS_NAME, "body")
